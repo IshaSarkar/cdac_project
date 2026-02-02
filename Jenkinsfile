@@ -35,8 +35,8 @@ pipeline {
                 curl -X POST \
                   -H "Authorization:${MOBSF_API_KEY}" \
                   -F "file=@apk/InsecureBankv2.apk" \
-                  ${MOBSF_URL}/api/v1/upload
-                '''
+		  http://localhost:8000/api/v1/upload               
+		 '''
             }
         }
     }
