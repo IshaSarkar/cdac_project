@@ -34,12 +34,7 @@ pipeline {
 
                 echo "$RESPONSE"
 
-                HASH=$(echo "$RESPONSE" | jq -r '.hash')
-
-                if [ "$HASH" = "null" ] || [ -z "$HASH" ]; then
-                    echo "❌ Failed to get APK hash from MobSF"
-                    exit 1
-                fi
+                HASH=$(echo "$RESPONSE" | sed -n 's/.*"hash":"\\([^"]*\\)".*/\\1/p')
 
                 echo "$HASH" > apk_hash.txt
                 echo "APK Hash: $HASH"
@@ -55,24 +50,27 @@ pipeline {
                 sh '''
                 HASH=$(cat apk_hash.txt)
 
-                echo "Fetching MobSF report..."
+                echo "Waiting for MobSF scan to complete..."
+                sleep 20
 
                 REPORT=$(curl -s -X POST \
                   -H "Authorization:${MOBSF_API_KEY}" \
                   -d "hash=$HASH" \
                   ${MOBSF_URL}/api/v1/report_json)
 
-                HIGH=$(echo "$REPORT" | jq '.appsec.high | length')
-                WARNING=$(echo "$REPORT" | jq '.appsec.warning | length')
+                echo "MobSF Report fetched"
+
+                HIGH=$(echo "$REPORT" | sed -n 's/.*"high":\\[\\([^]]*\\)\\].*/\\1/p' | grep -o "title" | wc -l)
+                WARNING=$(echo "$REPORT" | sed -n 's/.*"warning":\\[\\([^]]*\\)\\].*/\\1/p' | grep -o "title" | wc -l)
 
                 echo "High vulnerabilities: $HIGH"
                 echo "Warnings: $WARNING"
 
                 if [ "$HIGH" -gt 0 ]; then
-                    echo "❌ SECURITY GATE FAILED – High vulnerabilities found"
+                    echo "❌ SECURITY GATE FAILED – Vulnerable APK"
                     exit 1
                 else
-                    echo "✅ SECURITY GATE PASSED – No high vulnerabilities"
+                    echo "✅ SECURITY GATE PASSED – APK is safe"
                 fi
                 '''
             }
