@@ -35,7 +35,7 @@ pipeline {
                 echo "Upload response:"
                 echo "$RESPONSE"
 
-                HASH=$(echo "$RESPONSE" | sed -n 's/.*"hash":"\\([^"]*\\)".*/\\1/p')
+                HASH=$(echo "$RESPONSE" | grep -o '"hash"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
 
                 if [ -z "$HASH" ]; then
                     echo "❌ Failed to extract APK hash"
@@ -72,9 +72,6 @@ pipeline {
                   -d "hash=$HASH" \
                   ${MOBSF_URL}/api/v1/report_json)
 
-                echo "MobSF report fetched"
-
-                # Count vulnerability findings safely (NO jq)
                 VULN_COUNT=$(echo "$REPORT" | grep -o '"title"' | wc -l)
 
                 echo "Total vulnerability findings: $VULN_COUNT"
@@ -99,4 +96,3 @@ pipeline {
         }
     }
 }
-
