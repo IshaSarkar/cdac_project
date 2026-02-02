@@ -40,17 +40,37 @@ pipeline {
             }
         }
 
-        stage('Security Gate – MobSF') {
+        stage('Security Gate – MobSF (Polling)') {
             steps {
                 sh '''
                 HASH=$(cat apk_hash.txt)
+                MAX_TRIES=10
+                COUNT=0
 
-                echo "Fetching MobSF report..."
+                echo "Waiting for MobSF scan to complete..."
 
-                REPORT=$(curl -s -X POST \
-                  -H "Authorization:${MOBSF_API_KEY}" \
-                  -d "hash=$HASH" \
-                  ${MOBSF_URL}/api/v1/report_json)
+                while true; do
+                    REPORT=$(curl -s -X POST \
+                      -H "Authorization:${MOBSF_API_KEY}" \
+                      -d "hash=$HASH" \
+                      ${MOBSF_URL}/api/v1/report_json)
+
+                    READY=$(echo "$REPORT" | jq -r '.report')
+
+                    if [ "$READY" != "Report not Found" ]; then
+                        echo "Report ready!"
+                        break
+                    fi
+
+                    COUNT=$((COUNT+1))
+                    if [ "$COUNT" -ge "$MAX_TRIES" ]; then
+                        echo "❌ MobSF scan timeout"
+                        exit 1
+                    fi
+
+                    echo "Scan not ready yet… retrying"
+                    sleep 5
+                done
 
                 HIGH=$(echo "$REPORT" | jq '.high | length')
                 CRITICAL=$(echo "$REPORT" | jq '.critical | length')
@@ -74,7 +94,7 @@ pipeline {
             echo 'Pipeline PASSED – Application is secure'
         }
         failure {
-            echo 'Pipeline FAILED – Security issues detected'
+            echo 'Pipeline FAILED – Security vulnerabilities detected'
         }
     }
 }
