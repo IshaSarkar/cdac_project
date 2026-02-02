@@ -32,10 +32,12 @@ pipeline {
             steps {
                 sh '''
                 echo "Uploading APK to MobSF for security scanning..."
-                curl -X POST \
-                  -H "Authorization:${MOBSF_API_KEY}" \
-                  -F "file=@apk/InsecureBankv2.apk" \
-		  http://localhost:8000/api/v1/upload               
+		curl -X POST \
+		  -H "Authorization:${MOBSF_API_KEY}" \
+		  -F "file=@apk/InsecureBankv2.apk" \
+ 		 http://host.docker.internal:8000/api/v1/upload
+
+
 		 '''
             }
         }
