@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        MOBSF_API_KEY = credentials('mobsf-api-key')
         MOBSF_URL = "http://host.docker.internal:8000"
     }
 
@@ -13,22 +14,13 @@ pipeline {
             }
         }
 
-        stage('Build') {
-            steps {
-                echo 'Build stage running'
-            }
-        }
-
         stage('Docker Check') {
             steps {
                 sh 'docker --version'
             }
         }
 
-        stage('MobSF SAST Scan') {
-            environment {
-                MOBSF_API_KEY = credentials('mobsf-api-key')
-            }
+        stage('Upload APK to MobSF') {
             steps {
                 sh '''
                 echo "Uploading APK to MobSF..."
@@ -38,17 +30,20 @@ pipeline {
                   -F "file=@apk/InsecureBankv2.apk" \
                   ${MOBSF_URL}/api/v1/upload)
 
-                echo "Upload Response:"
                 echo "$RESPONSE"
 
                 HASH=$(echo "$RESPONSE" | jq -r '.hash')
 
-                if [ "$HASH" = "null" ] || [ -z "$HASH" ]; then
-                    echo "❌ APK upload failed"
-                    exit 1
-                fi
-
                 echo "APK Hash: $HASH"
+                echo "$HASH" > apk_hash.txt
+                '''
+            }
+        }
+
+        stage('Security Gate – MobSF') {
+            steps {
+                sh '''
+                HASH=$(cat apk_hash.txt)
 
                 echo "Fetching MobSF report..."
 
@@ -56,8 +51,6 @@ pipeline {
                   -H "Authorization:${MOBSF_API_KEY}" \
                   -d "hash=$HASH" \
                   ${MOBSF_URL}/api/v1/report_json)
-
-                echo "Parsing vulnerabilities..."
 
                 HIGH=$(echo "$REPORT" | jq '.high | length')
                 CRITICAL=$(echo "$REPORT" | jq '.critical | length')
@@ -69,7 +62,7 @@ pipeline {
                     echo "❌ SECURITY GATE FAILED – Vulnerabilities found"
                     exit 1
                 else
-                    echo "✅ SECURITY GATE PASSED – No critical issues"
+                    echo "✅ SECURITY GATE PASSED – App is safe"
                 fi
                 '''
             }
@@ -78,10 +71,10 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline completed successfully'
+            echo 'Pipeline PASSED – Application is secure'
         }
         failure {
-            echo 'Pipeline failed'
+            echo 'Pipeline FAILED – Security issues detected'
         }
     }
 }
