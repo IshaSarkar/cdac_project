@@ -1,5 +1,5 @@
 pipeline {
-<<<<<<< HEAD
+ HEAD
   agent any
 
   stages {
