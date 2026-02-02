@@ -1,21 +1,32 @@
 pipeline {
- HEAD
-  agent any
+    agent any
 
-  stages {
-    stage('Build Docker Image') {
-      steps {
-        sh 'docker build -t devsecops-app .'
-      }
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Code checked out from GitHub'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Build stage running'
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh 'docker --version'
+            }
+        }
     }
 
-    stage('Deploy to Swarm') {
-      steps {
-        sh '''
-        docker service rm devsecops_service || true
-        docker service create --name devsecops_service -p 5000:5000 devsecops-app
-        '''
-      }
+    post {
+        success {
+            echo 'Pipeline completed successfully'
+        }
+        failure {
+            echo 'Pipeline failed'
+        }
     }
-  }
 }
