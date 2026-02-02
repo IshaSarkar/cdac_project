@@ -32,13 +32,13 @@ pipeline {
                   -F "file=@apk/InsecureBankv2.apk" \
                   ${MOBSF_URL}/api/v1/upload)
 
-                echo "MobSF Upload Response:"
+                echo "Upload response:"
                 echo "$RESPONSE"
 
-                HASH=$(echo "$RESPONSE" | jq -r '.hash')
+                HASH=$(echo "$RESPONSE" | sed -n 's/.*"hash":"\\([^"]*\\)".*/\\1/p')
 
-                if [ "$HASH" = "null" ] || [ -z "$HASH" ]; then
-                    echo "❌ Failed to get APK hash"
+                if [ -z "$HASH" ]; then
+                    echo "❌ Failed to extract APK hash"
                     exit 1
                 fi
 
@@ -51,7 +51,7 @@ pipeline {
         stage('Wait for MobSF Scan') {
             steps {
                 sh '''
-                echo "Waiting for MobSF to complete analysis..."
+                echo "Waiting for MobSF analysis to complete..."
                 sleep 30
                 '''
             }
@@ -65,21 +65,21 @@ pipeline {
                 sh '''
                 HASH=$(cat apk_hash.txt)
 
+                echo "Fetching MobSF security report..."
+
                 REPORT=$(curl -s -X POST \
                   -H "Authorization:${MOBSF_API_KEY}" \
                   -d "hash=$HASH" \
                   ${MOBSF_URL}/api/v1/report_json)
 
-                echo "MobSF Security Report:"
-                echo "$REPORT"
+                echo "MobSF report fetched"
 
-                HIGH=$(echo "$REPORT" | jq '.appsec.high | length')
-                WARNING=$(echo "$REPORT" | jq '.appsec.warning | length')
+                # Count vulnerability findings safely (NO jq)
+                VULN_COUNT=$(echo "$REPORT" | grep -o '"title"' | wc -l)
 
-                echo "High Vulnerabilities: $HIGH"
-                echo "Warnings: $WARNING"
+                echo "Total vulnerability findings: $VULN_COUNT"
 
-                if [ "$HIGH" -gt 0 ]; then
+                if [ "$VULN_COUNT" -gt 0 ]; then
                     echo "❌ SECURITY GATE FAILED – Vulnerable APK detected"
                     exit 1
                 else
@@ -92,10 +92,11 @@ pipeline {
 
     post {
         success {
-            echo '✅ Pipeline PASSED – Application is secure'
+            echo '✅ PIPELINE PASSED – Application is secure'
         }
         failure {
-            echo '❌ Pipeline FAILED – Security vulnerabilities detected'
+            echo '❌ PIPELINE FAILED – Security vulnerabilities detected'
         }
     }
 }
+
