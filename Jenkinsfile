@@ -2,11 +2,11 @@ pipeline {
     agent any
 
     environment {
-        // FIX 1: Use the direct IP address that worked in your manual curl tests
         MOBSF_URL = "http://192.168.80.112:8000"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 echo 'Code checked out from GitHub'
@@ -21,32 +21,26 @@ pipeline {
 
         stage('Upload APK to MobSF') {
             environment {
-                // Ensure this ID matches your Jenkins Credentials (e.g., mobsf-api-key)
                 MOBSF_API_KEY = credentials('mobsf-api-key')
             }
             steps {
                 sh '''
                 echo "Uploading APK to MobSF..."
 
-                # FIX 2: Added -H "X-Mobsf-Api-Key" which MobSF prefers over standard "Authorization"
-                # FIX 3: Added -v for visibility if it fails again
                 RESPONSE=$(curl -s -X POST \
                   -H "X-Mobsf-Api-Key: ${MOBSF_API_KEY}" \
                   -F "file=@apk/InsecureBankv2.apk" \
                   ${MOBSF_URL}/api/v1/upload)
 
-                echo "Upload response:"
-                echo "$RESPONSE"
-
                 HASH=$(echo "$RESPONSE" | grep -o '"hash"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
 
                 if [ -z "$HASH" ]; then
-                    echo "❌ Failed to extract APK hash - check your API Key and Network"
+                    echo "❌ APK upload failed"
                     exit 1
                 fi
 
                 echo "$HASH" > apk_hash.txt
-                echo "APK Hash saved: $HASH"
+                echo "APK uploaded successfully"
                 '''
             }
         }
@@ -54,7 +48,7 @@ pipeline {
         stage('Wait for MobSF Scan') {
             steps {
                 sh '''
-                echo "Waiting for MobSF analysis to complete..."
+                echo "Waiting for MobSF analysis..."
                 sleep 30
                 '''
             }
@@ -66,30 +60,27 @@ pipeline {
             }
             steps {
                 sh '''
-                if [ ! -f apk_hash.txt ]; then
-                    echo "❌ apk_hash.txt not found!"
-                    exit 1
-                fi
-
                 HASH=$(cat apk_hash.txt)
-                echo "Fetching MobSF security report for hash: $HASH"
 
-                # FIX 4: Used X-Mobsf-Api-Key header here as well
-                REPORT=$(curl -s -X POST \
+                # Fetch FULL report (hidden)
+                curl -s -X POST \
                   -H "X-Mobsf-Api-Key: ${MOBSF_API_KEY}" \
                   -d "hash=$HASH" \
-                  ${MOBSF_URL}/api/v1/report_json)
+                  ${MOBSF_URL}/api/v1/report_json \
+                  > mobsf_report.json
 
-                # Count vulnerabilities
-                VULN_COUNT=$(echo "$REPORT" | grep -o '"title"' | wc -l)
+                # Count vulnerabilities (summary only)
+                VULN_COUNT=$(grep -o '"title"' mobsf_report.json | wc -l)
 
-                echo "Total vulnerability findings: $VULN_COUNT"
+                echo "===== MobSF Security Summary ====="
+                echo "APK Name : InsecureBankv2.apk"
+                echo "Total Vulnerabilities : $VULN_COUNT"
 
                 if [ "$VULN_COUNT" -gt 0 ]; then
-                    echo "❌ SECURITY GATE FAILED – Vulnerable APK detected"
+                    echo "Security Gate : FAILED"
                     exit 1
                 else
-                    echo "✅ SECURITY GATE PASSED – APK is secure"
+                    echo "Security Gate : PASSED"
                 fi
                 '''
             }
@@ -97,11 +88,14 @@ pipeline {
     }
 
     post {
+        always {
+            archiveArtifacts artifacts: 'mobsf_report.json, apk_hash.txt', fingerprint: true
+        }
         success {
             echo '✅ PIPELINE PASSED – Application is secure'
         }
         failure {
-            echo '❌ PIPELINE FAILED – Check logs for errors'
+            echo '❌ PIPELINE FAILED – View MobSF report in Artifacts'
         }
     }
 }
