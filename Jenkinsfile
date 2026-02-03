@@ -60,6 +60,7 @@ pipeline {
         stage('Security Gate – MobSF') {
             environment {
                 MOBSF_API_KEY = credentials('mobsf-api-key')
+		MOBSF_URL     = 'http://192.168.80.112:8000'
             }
             steps {
                 sh '''
